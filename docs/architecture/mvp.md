@@ -21,7 +21,7 @@ Node.js 22.13+ built-in HTTP server and SQLite (`node:sqlite`), no npm runtime d
 
 The server owns SQLite, provider tokens and file paths. It binds to `127.0.0.1` by default. Non-loopback bind is rejected without a 16+ character `APP_PASSWORD` and HTTPS `PUBLIC_BASE_URL`; put it behind authenticated TLS reverse proxy on VPS. Password-authenticated browser sessions use a HttpOnly SameSite=Strict cookie (Secure when HTTPS configured), in-memory session hashes and a same-origin/custom-header request check for mutations. This is **single-operator MVP**, not multi-tenant user/role control. Do not expose a local unauthenticated instance through a public tunnel.
 
-Media MIME is checked against file signatures with a 4 MB limit and stored under generated filenames, never as executable user paths. Import parsing is bounded. Do not store any token in the browser or database; Page records contain only the name of the server environment variable that holds the token.
+Media MIME is checked against file signatures with a 4 MB binary limit (JSON/base64 requests allow the encoded overhead) and stored under generated filenames, never as executable user paths. Import parsing is bounded. Do not store any token in the browser or database; Page records contain only the name of the server environment variable that holds the token.
 
 ## Workflow and safety
 

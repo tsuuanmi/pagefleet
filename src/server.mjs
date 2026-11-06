@@ -34,7 +34,7 @@ function json(res,status,data,headers={}) {
     'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers});
   res.end(body);
 }
-function parseBody(req,limit=5_200_000) {
+function parseBody(req,limit=6_000_000) {
   return new Promise((resolve,reject)=>{
     const list=[];let n=0;
     req.on('data',chunk=>{n+=chunk.length;if(n>limit){reject(apiError('Request too large',413));req.destroy();}else list.push(chunk);});
