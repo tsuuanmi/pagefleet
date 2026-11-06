@@ -62,15 +62,25 @@ Let `P`=Pages, `D`=posts/Page/day, `N=P*D*30` = delivered variants/month. Let `A
 
 Three equally sized generation attempts -> about three times these text-only totals. Long context, revision loops, expensive image generation and staff review can dwarf this figure. Measure real token usage before choosing a model.
 
+See [RES-0003](RES-0003-free-publishing-paths.md) for evidence that Meta supports native Page-post scheduling, potentially eliminating the need for a 24/7 scheduler or VPS during a local-first pilot. See [RES-0004](RES-0004-muse-agent-fit.md) for Muse's usage caps/region and human-approval requirement. These are research findings, not proven for the target Pages.
+
 ## Scenario comparisons
 
-- **A. Local + Mock Publisher:** no incremental hosting/publisher subscription, but LLM usage, workstation power and staff cost remain; not 24/7.
+- **A. Local + Mock Publisher:** no incremental hosting/publisher subscription, but LLM usage, workstation power and staff cost remain; not a real publisher.
+- **A2. Local + direct Meta native scheduling:** potentially **USD 0/month in channel subscription and VPS hosting**, if Meta credentials/permissions and native scheduling work for these Pages. Pre-submit approved posts within the supported scheduling window while the laptop is on; Meta publishes them after it shuts down. Still requires operator time, power, AI if used, backup, monitoring on next open, and token/reconnection maintenance; does **not** run future generation/exports or scheduled submission beyond the window while offline.
+- **A3. Free Meta Business Suite:** no subscription/VPS; operator must schedule manually, usually post-by-post. Operational labor scales with number of Page variants.
 - **B. PageFleet + Buffer Essentials:** roughly USD 50/month equivalent for 10 channels on annual plan, plus AI and hosting if any. Fastest provider-dependent pilot.
 - **C. PageFleet on VPS + Buffer:** B plus VPS (e.g. EUR 5.49 or 8.49/month before IPv4/tax) plus backups/domain. Do **not** sum EUR and USD without FX.
-- **D. VPS + direct Meta API:** avoid Buffer channel invoice only if access approved; accept more authentication, reliability and engineering work.
+- **D. VPS + direct Meta API:** no Buffer channel invoice if access approved; needed only for unattended *future submission*, reconciliation, notifications or long-horizon queue, rather than for Meta-native posts already scheduled. Accept authentication, reliability and engineering work.
 - **E. VPS + self-host Postiz/Mixpost:** infrastructure + ongoing maintenance + license constraints; not automatically cheaper than Buffer.
 
 Compare **12-month total cost** including developer time, not only monthly cloud bills. Buffer's USD 50 monthly equivalent corresponds to USD 600 committed annually for ten channels on the cited annual Essentials rate.
+
+## Break-even test versus Buffer subscription
+
+Using the indicative **USD 50/month equivalent** Essentials plan, saving Buffer subscription is financially justified only if additional direct-API engineering/support work, hosting and expected downtime costs remain below that benefit. For example, **3 hours of extra monthly maintenance at USD 20/hour = USD 60/month** in opportunity cost, exceeding the USD 50 monthly-equivalent subscription saving even if the cash invoice is zero. This is a scenario, not a staff-rate claim. Compare **12-month** TCO, and account for Buffer's annual billing commitment versus no recurring publisher subscription.
+
+Other no-provider-fee generation paths: [Ollama local models](https://ollama.com/) (machine CPU/GPU, electricity and quality trade-offs), [Gemini API free tier](https://ai.google.dev/gemini-api/docs/pricing) (model/region quotas and possible data-use conditions), [Groq free tier limits](https://console.groq.com/docs/rate-limits). Do not treat free quotas as guaranteed production capacity. Claude/OpenAI remain paid fallback options.
 
 ## Suggested optimization controls (unimplemented)
 

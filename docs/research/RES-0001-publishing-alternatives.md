@@ -21,6 +21,8 @@ Verified/reviewed on **2026-11-06**. No end-to-end publishing has been tested in
 
 Primary documentation: [Buffer posts and scheduling](https://developers.buffer.com/guides/posts-and-scheduling.html), [Buffer API help](https://support.buffer.com/articles/using-buffers-api-GtIYIQilz5), [Postiz source/license](https://github.com/gitroomhq/postiz-app), [Mixpost source/license](https://github.com/inovector/mixpost).
 
+For a deeper feasibility comparison of **zero-subscription** publishing paths, native Meta scheduling, Activepieces and Social SDK, see [RES-0003](RES-0003-free-publishing-paths.md). For Muse-specific capabilities and gaps see [RES-0004](RES-0004-muse-agent-fit.md). Vendor prices belong in the [cost model](RES-0002-cost-model.md).
+
 ## Findings
 
 - Buffer documents scheduling text/image posts for Facebook channels, but this is **not** evidence of actual publishing permissions for the owner's Pages.
@@ -32,8 +34,8 @@ Primary documentation: [Buffer posts and scheduling](https://developers.buffer.c
 ## Experiments before selection
 
 1. Obtain explicit access to one controlled test Page and validate permitted connections.
-2. Schedule text and image via Buffer; record channel ID, external post ID/URL, status and all error codes.
-3. Independently test eligibility for direct Meta Pages API without circumventing review.
+2. **First**, test native scheduled text and photo posts with the authorized **Meta Pages API**, record remote IDs and actual published state.
+3. **Only if necessary**, test Buffer as a fallback; compare Social SDK/Activepieces direct API wrappers without assuming they solve Meta permission review.
 4. Evaluate Postiz/Mixpost deployment RAM, CPU, licensing and operations on a cheap VPS.
 5. Exercise timezone, disconnect, token expiry, 429 limits, ambiguous timeouts and safe reconciliation.
 6. Compare total operating cost using [cost model](RES-0002-cost-model.md); then formalize provider decision.
