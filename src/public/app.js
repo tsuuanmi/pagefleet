@@ -1,3 +1,13 @@
+const THEME_KEY='pagefleet.theme';
+function setTheme(value) {
+  const next=value==='dark'?'dark':'light';
+  document.documentElement.dataset.theme=next;
+  localStorage.setItem(THEME_KEY,next);
+  const b=document.querySelector('#themeToggle');
+  if(b){b.innerHTML=next==='dark'?'☀ <span>Light</span>':'☾ <span>Dark</span>';b.setAttribute('aria-label',next==='dark'?'Bật giao diện sáng':'Bật giao diện tối');b.setAttribute('aria-pressed',String(next==='dark'));}
+}
+try{setTheme(localStorage.getItem(THEME_KEY)|| (matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));}catch{setTheme('light');}
+document.querySelector('#themeToggle').addEventListener('click',()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark'));
 const $=selector=>document.querySelector(selector);
 const e=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 let state,tab='overview',modalSubmit=null;
@@ -13,13 +23,19 @@ async function load() {
   const response=await fetch('/api/state');
   if(!response.ok)throw Error('Không thể tải workspace');
   state=await response.json();
-  $('#publisherLabel').textContent=state.publisher==='meta'?'Meta Graph API (LIVE)':'Mock Publisher (SAFE)';
+  $('#publisherLabel').textContent=state.demo?'Demo · Mock Publisher (SAFE)':state.publisher==='meta'?'Meta Graph API (LIVE)':'Mock Publisher (SAFE)';
+  $('#demoChip').textContent=state.demo?'DEMO · 10 PAGES':state.pages.length+' FANPAGES';
   render();
 }
 function announce(message,error=false) {
   const node=$('#notice');node.textContent=message;node.className='notice'+(error?' error':'');node.hidden=false;
 }
 function render() {
+  if(state.demo && !sessionStorage.getItem('pagefleet.demoHelp')){
+    const banner=$('#notice');banner.hidden=false;banner.className='notice';
+    banner.textContent='DEMO MODE: 10 Page mẫu, 5 ý tưởng, nhiều bản nháp/đã duyệt/đã lên lịch. Hãy vào Nội dung → AI → Sửa → Duyệt → Lên lịch. Không có bài nào đăng thật.';
+    sessionStorage.setItem('pagefleet.demoHelp','1');
+  }
   for(const name of Object.keys(tabs))$('#'+name).hidden=name!==tab;
   $('#heading').textContent=tabs[tab][0];$('#subtitle').textContent=tabs[tab][1];
   $('#breadcrumb').textContent='WORKSPACE / '+tabs[tab][0].toUpperCase();

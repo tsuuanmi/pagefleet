@@ -4,22 +4,20 @@ import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
 import { timingSafeEqual, createHash, randomBytes } from 'node:crypto';
 import { openStore } from './db.mjs';
+import { parseServerConfig, validateRequestHost } from './cli.mjs';
+import { seedDemo } from './demo.mjs';
 import { mustText, verifyImage, validateSchedule, apiError } from './logic.mjs';
 import { importIdeas, csvRows, xlsxRows } from './import.mjs';
 import { generate, preflightGeneration, submitScheduled } from './providers.mjs';
 
+const config=parseServerConfig(process.argv.slice(2));
+if (config.help) { console.log(config.usage); process.exit(0); }
 const root=dirname(fileURLToPath(import.meta.url));
-const store=openStore();
+const { port, host, publicBase }=config;
+const directory=config.demo ? join(process.env.DATA_DIR||'./data','demo') : (process.env.DATA_DIR||'./data');
+const store=openStore(directory);
 store.recoverInterrupted();
-const port=Number(process.env.PORT||3088);
-const host=process.env.HOST||'127.0.0.1';
-if (!Number.isInteger(port)||port<1||port>65535) throw new Error('Invalid PORT');
-if (!['127.0.0.1','localhost','::1'].includes(host) && (!process.env.APP_PASSWORD || process.env.APP_PASSWORD.length<16))
-  throw new Error('APP_PASSWORD must be at least 16 characters for non-loopback binding');
-const publicBase=process.env.PUBLIC_BASE_URL||'';
-if(publicBase && !/^https:\/\/[^/]+\/?$/.test(publicBase))throw new Error('PUBLIC_BASE_URL must be an HTTPS origin');
-if (!['127.0.0.1','localhost','::1'].includes(host) && !publicBase)
-  throw new Error('PUBLIC_BASE_URL is required for non-loopback binding');
+if (config.demo) seedDemo(store, console.log);
 const live=process.env.APP_PASSWORD||'';
 const sessions=new Set();
 const pendingAI=new Set();
@@ -56,7 +54,7 @@ function checkOrigin(req){
     if(req.headers['x-pagefleet-request']!=='1')throw apiError('Missing application request header',403);
     return;
   }
-  const expected=publicBase || 'http://'+(host==='::1'?'[::1]':host)+':'+port;
+  const expected=publicBase ? new URL(publicBase).origin : validateRequestHost(req.headers.host,config);
   if(origin!==expected)throw apiError('Request origin mismatch',403);
 }
 function requireAuth(req){
@@ -72,6 +70,14 @@ function attemptLimit(req,route,limit=30){
   if(state.count>limit)throw apiError('Too many requests; retry after a minute',429);
 }
 async function route(req,res) {
+  // Prevent Host-header rebinding attacks on the local/LAN HTTP endpoint.
+  if (publicBase) {
+    const wanted=new URL(publicBase).host;
+    if (req.headers.host!==wanted) throw apiError('Unexpected Host header',403);
+  } else {
+    try { validateRequestHost(req.headers.host,config); }
+    catch { throw apiError('Host is not an allowed local/private-network address',403); }
+  }
   const path=new URL(req.url||'/', 'http://local').pathname;
   if(req.method==='GET'&&(path==='/'||path==='/app.js'||path==='/style.css')){
     const p=path==='/'?'index.html':path.slice(1);
@@ -97,7 +103,7 @@ async function route(req,res) {
   }
   if(!path.startsWith('/api/'))throw apiError('Not found',404);
   requireAuth(req);
-  if(req.method==='GET'&&path==='/api/state'){json(res,200,store.snapshot());return;}
+  if(req.method==='GET'&&path==='/api/state'){json(res,200,{...store.snapshot(),demo:config.demo});return;}
   if(req.method==='GET'&&path.startsWith('/api/media/')){
     const media=store.media(path.slice('/api/media/'.length));
     if(!media)throw apiError('Media not found',404);
@@ -175,7 +181,7 @@ async function route(req,res) {
   }
   if(path==='/api/schedule'){
     const id=mustText(body.id,'Variant id',80),date=validateSchedule(body.scheduled_at);
-    const provider=process.env.PUBLISHER==='meta'?'meta':'mock';
+    const provider=config.demo?'mock':process.env.PUBLISHER==='meta'?'meta':'mock';
     if(provider==='meta'&&process.env.META_PUBLISH_ENABLED!=='1')throw apiError('Meta publishing must be explicitly enabled',409);
     // Reserve before network calls, so retries never silently double-publish.
     const {deliveryId,variant:v}=store.reserve(id,date,provider,body.revision);
@@ -198,6 +204,9 @@ const server=http.createServer((req,res)=>{
     if(!e.httpStatus)console.error('[pagefleet]',e.message);
   });
 });
-server.listen(port,host,()=>console.log('PageFleet: http://'+(host==='::1'?'[::1]':host)+':'+port+
-  ' (publisher '+(process.env.PUBLISHER==='meta'?'meta':'mock')+')'));
+server.listen(port,host,()=>{
+  const address=config.lan ? 'http://<YOUR-LAN-IP>:'+port : (publicBase || 'http://'+(host==='::1'?'[::1]':host)+':'+port);
+  console.log('PageFleet: '+address+' (publisher '+(config.demo?'mock demo':(process.env.PUBLISHER==='meta'?'meta':'mock'))+')');
+  if(config.lan && !publicBase) console.warn('LAN HTTP is unencrypted; use only on a trusted private network, never port-forward.');
+});
 for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>server.close(()=>{store.close();process.exit(0);}));
