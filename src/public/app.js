@@ -2,11 +2,13 @@ const THEME_KEY='pagefleet.theme';
 function setTheme(value) {
   const next=value==='dark'?'dark':'light';
   document.documentElement.dataset.theme=next;
-  localStorage.setItem(THEME_KEY,next);
+  try { localStorage.setItem(THEME_KEY,next); } catch { /* private browsing may disable storage */ }
   const b=document.querySelector('#themeToggle');
   if(b){b.innerHTML=next==='dark'?'☀ <span>Light</span>':'☾ <span>Dark</span>';b.setAttribute('aria-label',next==='dark'?'Bật giao diện sáng':'Bật giao diện tối');b.setAttribute('aria-pressed',String(next==='dark'));}
 }
-try{setTheme(localStorage.getItem(THEME_KEY)|| (matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'));}catch{setTheme('light');}
+let initialTheme='light';
+try { initialTheme=localStorage.getItem(THEME_KEY)|| (matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'); } catch { /* use default */ }
+setTheme(initialTheme);
 document.querySelector('#themeToggle').addEventListener('click',()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark'));
 const $=selector=>document.querySelector(selector);
 const e=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));

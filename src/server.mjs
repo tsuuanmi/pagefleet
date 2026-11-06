@@ -103,7 +103,7 @@ async function route(req,res) {
   }
   if(!path.startsWith('/api/'))throw apiError('Not found',404);
   requireAuth(req);
-  if(req.method==='GET'&&path==='/api/state'){json(res,200,{...store.snapshot(),demo:config.demo});return;}
+  if(req.method==='GET'&&path==='/api/state'){json(res,200,{...store.snapshot(),demo:config.demo,ai:config.demo?{template:true,openai:false,anthropic:false}:store.snapshot().ai});return;}
   if(req.method==='GET'&&path.startsWith('/api/media/')){
     const media=store.media(path.slice('/api/media/'.length));
     if(!media)throw apiError('Media not found',404);
@@ -164,6 +164,7 @@ async function route(req,res) {
       const v=store.variant(mustText(body.id,'Variant id',80));
       if(!['draft','approved'].includes(v.status))throw apiError('Cannot regenerate submitted post',409);
       const provider=body.provider||'template',expected=body.revision;
+      if (config.demo && provider !== 'template') throw apiError('Demo uses free offline drafts only; paid AI is disabled',409);
       if(expected!==v.revision)throw apiError('Stale revision; reload',409);
       const potential=preflightGeneration(provider);
       if(provider!=='template'){

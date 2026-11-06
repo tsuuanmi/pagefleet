@@ -12,6 +12,32 @@ A **local-first AI content studio** for ten authorized Facebook Pages. Seven Pag
 
 `npm run check` validates syntax, tests and import logic. The documentation router is [docs/README.md](docs/README.md).
 
+## Explore the demo
+
+```bash
+npm start -- --demo --port 3088
+```
+
+Open http://127.0.0.1:3088. Demo records are stored **separately** in `data/demo/pagefleet.sqlite` and created only when that demo database has no ideas. The demo starts with **10 named sample Pages, 5 content ideas, distinct Page-specific drafts, approved variants, and mock scheduled deliveries**. Explore the **Tổng quan / Nội dung / Fanpages / Lịch đăng** tabs; edit, create a free offline draft, approve its exact revision, and try **Lên lịch**. The demo **cannot publish to Facebook** and forbids paid AI generation. The orange/green statuses refer to mock records only, not live Facebook posts.
+
+To reset the demo (while the server is stopped), delete **only** `data/demo/`; it will be recreated on the next `--demo` start. Normal local data under `data/pagefleet.sqlite` is unaffected. For another data root, configure `DATA_DIR`.
+
+## Light / dark appearance
+
+Use the **☾ Dark / ☀ Light** button in the header. The theme initially follows your browser/system preference and stores your selection in browser local storage. It works in both ordinary and demo mode; it does not change shared Page data.
+
+## Share the demo on a trusted LAN
+
+```bash
+APP_PASSWORD='replace-with-a-unique-strong-password' npm start -- --demo --public --port 3088
+```
+
+The server listens on `0.0.0.0:3088`; peers can browse `http://<YOUR-LAN-IP>:3088`, using the same password. Find your machine's **private LAN IP** using `hostname -I` on many Linux systems, `ipconfig` on Windows, or your operating system's network settings. Allow the port through your **local firewall** only for trusted LAN clients.
+
+`--port N` selects the port; `--public` (or `--lan`) is required to listen on all network interfaces. To bind an explicit interface, use `--public --host 192.168.1.20 --port 3088`. **Do not port-forward this HTTP service, publish it to the Internet, or use an untrusted Wi-Fi network:** the password and data are not encrypted over LAN HTTP. Non-loopback binding requires a 16+ character `APP_PASSWORD`. Use HTTPS + `PUBLIC_BASE_URL` behind a reverse proxy before exposing beyond trusted LAN. `--demo` requires `PUBLISHER=mock`; no Meta posting happens from demo mode. Other LAN users can edit demo content; this is single-operator authentication, not user separation.
+
+Use `npm start -- --help` to see flags.
+
 ## CSV and Excel
 
 Supports `.csv` or `.xlsx` (first worksheet), maximum 3 MB and 200 ideas per import. Required column: `title`; optional columns: `brief` / `hint` / `notes`, `pages` (e.g. `page-1;page-2`), `image` / `image_hint`. No Pages column means all ten. Sample CSV:
@@ -38,6 +64,6 @@ Local workstation can close *after Meta accepts a native scheduled post*, but ca
 
 ## VPS later
 
-Single-process Node app, persistent `DATA_DIR`, backup of SQLite DB + media, and authentication at an HTTPS reverse proxy. Non-loopback binding requires `APP_PASSWORD` (16+ characters) and `PUBLIC_BASE_URL=https://...`. Do not expose an unauthenticated local instance through a tunnel. No production Docker or backup automation is included in this MVP yet.
+Single-process Node app, persistent `DATA_DIR`, backup of SQLite DB + media, and authentication at an HTTPS reverse proxy. Trusted LAN `--public` binding requires `APP_PASSWORD` (16+ characters) and displays a plaintext-HTTP warning. Internet/VPS exposure requires an HTTPS reverse proxy with `PUBLIC_BASE_URL=https://...` (and the password). Do not expose an unauthenticated local instance through a tunnel. No production Docker or backup automation is included in this MVP yet.
 
 Current limitations and trust boundaries are recorded in [MVP architecture](docs/architecture/mvp.md); [research](docs/research/README.md) is not accepted architecture.

@@ -3,7 +3,7 @@ type: architecture
 status: draft
 summary: Implemented local MVP boundaries, safety invariants and deployment limitations.
 implements: [requirements/product]
-covers: [src/server.mjs, src/db.mjs, src/logic.mjs, src/import.mjs, src/providers.mjs, src/public/app.js, test/core.test.mjs]
+covers: [src/server.mjs, src/cli.mjs, src/demo.mjs, src/db.mjs, src/logic.mjs, src/import.mjs, src/providers.mjs, src/public/app.js, src/public/style.css, src/public/index.html, test/core.test.mjs, test/cli-demo.test.mjs]
 reviewed: 2026-11-06
 ---
 
@@ -13,13 +13,13 @@ reviewed: 2026-11-06
 
 ## Runtime and data
 
-Node.js 22.13+ built-in HTTP server and SQLite (`node:sqlite`), no npm runtime dependencies. Single process and SQLite WAL database in `DATA_DIR`; binary image files are stored in its `media/` subfolder. Ten **example** Page profiles are seeded on a new database. UI uses server-rendered snapshots of state via JSON plus a static browser frontend; no third-party CDN.
+Node.js 22.13+ built-in HTTP server and SQLite (`node:sqlite`), no npm runtime dependencies. Single process and SQLite WAL database in `DATA_DIR`; binary image files are stored in its `media/` subfolder. Ten **example** Page profiles are seeded on a new database. With `--demo`, ten realistic sample Pages, five ideas, per-Page variants and approved/scheduled *mock* examples are seeded into a distinct `DATA_DIR/demo` database. This demo disables paid AI and Meta publishing. It is never silently mixed with normal local data. UI uses server-rendered snapshots of state via JSON plus a static browser frontend; no third-party CDN.
 
 `ContentIdea` holds title, brief, image hints and one optional uploaded image. Each selected Page gets a `PostVariant` with editable text, revision, approval revision and Page-specific inputs. `Delivery` contains provider, intended ISO UTC schedule, state, remote ID and result. `Usage` records provider/model/token/cost for AI calls.
 
 ## Trust boundary
 
-The server owns SQLite, provider tokens and file paths. It binds to `127.0.0.1` by default. Non-loopback bind is rejected without a 16+ character `APP_PASSWORD` and HTTPS `PUBLIC_BASE_URL`; put it behind authenticated TLS reverse proxy on VPS. Password-authenticated browser sessions use a HttpOnly SameSite=Strict cookie (Secure when HTTPS configured), in-memory session hashes and a same-origin/custom-header request check for mutations. This is **single-operator MVP**, not multi-tenant user/role control. Do not expose a local unauthenticated instance through a public tunnel.
+The server owns SQLite, provider tokens and file paths. It binds to `127.0.0.1` by default. `--port` changes the port; `--public` enables trusted-LAN binding on `0.0.0.0` (or `--host` for a specific IP) only with a 16+ character `APP_PASSWORD`. LAN HTTP is **unencrypted** and must never be port-forwarded. For Internet/VPS exposure, use `PUBLIC_BASE_URL=https://...` and an authenticated TLS reverse proxy. A conservative Host/Origin check limits plain HTTP requests to private IPs/localhost and the bound port. Password-authenticated browser sessions use a HttpOnly SameSite=Strict cookie (Secure when HTTPS configured), in-memory session hashes and a same-origin/custom-header request check for mutations. This is **single-operator MVP**, not multi-tenant user/role control. Do not expose a local unauthenticated instance through a public tunnel.
 
 Media MIME is checked against file signatures with a 4 MB binary limit (JSON/base64 requests allow the encoded overhead) and stored under generated filenames, never as executable user paths. Import parsing is bounded. Do not store any token in the browser or database; Page records contain only the name of the server environment variable that holds the token.
 
@@ -33,6 +33,10 @@ Media MIME is checked against file signatures with a 4 MB binary limit (JSON/bas
 6. If Meta request outcome is uncertain (including an error after a remote send or process crash), mark delivery **unknown** and block automatic retries. **No automatic remote reconciliation yet**: user must verify in Meta Business Suite. This means some delivery states can remain uncertain. Mock scheduled status does not mean a live post.
 7. No background worker is required for posts already accepted into Meta native scheduling; this server does **not** auto-generate or submit new drafts while closed. A VPS is optional until that behavior is needed.
 
+## Display and demo
+
+The UI supports an explicit light/dark toggle with a system-default initial preference and per-browser localStorage choice. No external theme dependency is added. The separate `--demo` workspace presents an end-to-end walkthrough with fake Page names and scheduled mock deliveries, but **no real Facebook posts, paid AI requests or live delivery confirmation**. Demo may be reset by deleting the isolated demo directory while stopped.
+
 ## Current limitations
 
 - Real Meta permissions/tokens, native scheduling, photo flow and remote read-back are **not verified**; API version is configurable.
@@ -45,7 +49,7 @@ Media MIME is checked against file signatures with a 4 MB binary limit (JSON/bas
 
 ## Commands
 
-- `node src/server.mjs` / `npm start` (Node 22.13+)
+- `node src/server.mjs` / `npm start` (Node 22.13+); `npm start -- --demo --port 3088` or `APP_PASSWORD='...' npm start -- --demo --public --port 3088` for LAN.
 - `npm test` and `npm run check` (offline)
 - `python3 tools/docs.py check`, `python3 tools/docs.py sync --check`, `python3 tools/docs.py impact <base-ref>` for documentation.
 

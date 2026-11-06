@@ -32,3 +32,25 @@ jobs:
           grep -q '"pages"' "$DATA_DIR/state.json"
           curl -fsS -H 'Content-Type: application/json' -H 'X-PageFleet-Request: 1' -d '{"title":"Smoke test","brief":"Local test","page_ids":["page-1"]}' http://127.0.0.1:3088/api/idea > "$DATA_DIR/idea.json"
           grep -q '"id"' "$DATA_DIR/idea.json"
+      - name: Demo HTTP smoke test (mock-only, LAN CLI, password protection)
+        run: |
+          set -eu
+          DATA_DIR="$(mktemp -d)"
+          export DATA_DIR PORT=3099 PUBLISHER=mock APP_PASSWORD=test-passphrase-12345678
+          node src/server.mjs --demo --public --port 3099 > "$DATA_DIR/demo.log" 2>&1 &
+          demo_pid=$!
+          trap 'kill "$demo_pid" 2>/dev/null || true; rm -rf "$DATA_DIR"' EXIT
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3099/api/session > "$DATA_DIR/session.json"; then break; fi
+            sleep 1
+          done
+          grep -q '"authenticated":false' "$DATA_DIR/session.json"
+          code="$(curl -s -o "$DATA_DIR/blocked.json" -w '%{http_code}' http://127.0.0.1:3099/api/state)"
+          test "$code" = 401
+          curl -fsS -c "$DATA_DIR/cookie" -H 'Content-Type: application/json' -H 'X-PageFleet-Request: 1' -d '{"password":"test-passphrase-12345678"}' http://127.0.0.1:3099/api/login > "$DATA_DIR/login.json"
+          curl -fsS -b "$DATA_DIR/cookie" http://127.0.0.1:3099/api/state > "$DATA_DIR/state.json"
+          grep -q '"demo":true' "$DATA_DIR/state.json"
+          grep -q '"title":"Bao Bì Xanh"' "$DATA_DIR/state.json" || grep -q '"name":"Bao Bì Xanh"' "$DATA_DIR/state.json"
+          grep -q '"scheduled"' "$DATA_DIR/state.json"
+          code="$(curl -s -o "$DATA_DIR/badhost.json" -w '%{http_code}' -H 'Host: evil.invalid:3099' http://127.0.0.1:3099/api/session)"
+          test "$code" = 403
