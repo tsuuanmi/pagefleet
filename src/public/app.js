@@ -43,7 +43,7 @@ function render() {
   $('#ideas').innerHTML=`<div class="toolbar"><h2>${state.ideas.length} ý tưởng · ${state.variants.length} biến thể</h2><div class="btn-group"><button data-action="import">↑ Import CSV / Excel</button><button class="primary" data-action="new">+ Tạo mới</button></div></div>
     <div class="table-wrap"><table><thead><tr><th>Ý tưởng / Fanpage</th><th>Nội dung</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>
     ${state.variants.map(v=>`<tr><td><strong>${e(v.idea_title)}</strong><br><span class="muted">${e(v.page_name)}</span></td><td style="max-width:250px"><span title="${e(v.body)}">${e((v.body||'Chưa tạo nội dung').slice(0,90))}</span></td><td>${badge(v.status)}</td><td><div class="btn-group">
-      ${['draft','approved'].includes(v.status)?`<button class="small" data-action="generate" data-id="${e(v.id)}">✨ AI</button><button class="small" data-action="edit" data-id="${e(v.id)}">Sửa</button><button class="small" data-action="approve" data-id="${e(v.id)}">Duyệt</button>`:''}
+      ${['draft','approved'].includes(v.status)?`<button class="small" data-action="generate" data-id="${e(v.id)}">✨ AI</button><button class="small" data-action="edit" data-id="${e(v.id)}">Sửa</button><button class="small" data-action="image" data-id="\${e(v.id)}">Ảnh</button><button class="small" data-action="approve" data-id="${e(v.id)}">Duyệt</button>`:''}
       ${v.status==='approved'? `<button class="small primary" data-action="schedule" data-id="${e(v.id)}">Lên lịch</button>`:''}</div></td></tr>`).join('')||'<tr><td colspan="4" class="empty">Chưa có biến thể nào. Import Excel hoặc tạo ý tưởng mới.</td></tr>'}
     </tbody></table></div>`;
   $('#calendar').innerHTML=`<div class="section-head"><h2>Scheduled delivery records</h2><span class="muted">Các bài Meta cần kiểm tra trạng thái sau khi đến giờ</span></div>
@@ -110,6 +110,24 @@ function scheduleVariant(id){
       tab='calendar';return 'Đã gửi lịch: '+result.provider+' / '+result.state;
     });
 }
+function attachImageDialog(variantId) {
+  const v=state.variants.find(x=>x.id===variantId);
+  const idea=state.ideas.find(x=>x.id===v.idea_id);
+  modal('Ảnh đính kèm','Ảnh thuộc ý tưởng và áp dụng cho tất cả Page; thay ảnh sẽ huỷ duyệt cũ.',
+    '<label for="f-attachment">JPEG / PNG / WebP · tối đa 4 MB</label><input id="f-attachment" type="file" accept="image/jpeg,image/png,image/webp" required>' +
+    (idea.image_id?'<p class="hint">Đã có ảnh. Tải ảnh mới để thay thế.</p>':''),
+    'Lưu ảnh', async()=>{
+      const file=$('#f-attachment').files[0];
+      if(!file)throw Error('Chọn ảnh trước.');
+      if(file.size>4*1024*1024)throw Error('Ảnh lớn hơn 4 MB.');
+      if(!['image/jpeg','image/png','image/webp'].includes(file.type))throw Error('Chỉ hỗ trợ JPEG, PNG, WebP.');
+      const bytes=new Uint8Array(await file.arrayBuffer());
+      let binary='';for(const b of bytes)binary+=String.fromCharCode(b);
+      const result=await request('/media',{filename:file.name,mime:file.type,data:btoa(binary)});
+      await request('/attach',{idea_id:v.idea_id,image_id:result.id});
+      return 'Đã lưu ảnh; các phiên bản cần được duyệt lại.';
+    });
+}
 function importDialog(){
   modal('Import Excel / CSV','Cột bắt buộc: title. Tuỳ chọn: brief, hint, image, pages (page-1,page-2).',
     '<label for="f-file">Chọn file .csv hoặc .xlsx</label><input type="file" id="f-file" name="file" accept=".csv,.xlsx" required>'+
@@ -133,6 +151,7 @@ async function runAction(action,id){
   if(action==='page')return pageForm(id);
   if(action==='edit')return editVariant(id);
   if(action==='generate')return generateVariant(id);
+  if(action==='image')return attachImageDialog(id);
   if(action==='schedule')return scheduleVariant(id);
   if(action==='approve'){
     const v=state.variants.find(x=>x.id===id);

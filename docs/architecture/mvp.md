@@ -37,7 +37,7 @@ Media MIME is checked against file signatures with a 4 MB limit and stored under
 
 - Real Meta permissions/tokens, native scheduling, photo flow and remote read-back are **not verified**; API version is configurable.
 - No image generation, video, Reels, analytics, cancellation/edits of remotely scheduled posts, automated scheduled-post state reconciliation, retry/release UI, per-person approval/roles, or offsite backup built in.
-- CSV/XLSX image cell values are hints; users upload image separately by the app. XLSX expects first worksheet in `xl/worksheets/sheet1.xml`; some workbook layouts need normalization.
+- CSV/XLSX image cell values are hints; users upload binary images via the variant's **Ảnh** action, which updates the parent idea and invalidates previous approvals. XLSX expects first worksheet in `xl/worksheets/sheet1.xml`; some workbook layouts need normalization.
 - No automatic delivery at due time in mock mode (it only records scheduling); Meta is the only intended native scheduling service.
 - Generated output quality depends on the model and editor; the offline template is a fill-in draft, **not generative AI**.
 - Budget caps are best-effort and conservative for a single process; usage billing may occur even if a provider request times out. Do not assume precise hard billing limits.
