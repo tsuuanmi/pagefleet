@@ -1,8 +1,8 @@
 ---
 level: 1
-areas: [governance=governance, requirements=requirement, research=research, proposals=proposal]
+areas: [governance=governance, requirements=requirement, architecture=architecture, research=research, proposals=proposal]
 id-prefixes: [research=RES, proposal=PROP]
-source-roots: []
+source-roots: [src, test]
 forbidden-names: [archive, archives, deprecated, history, legacy, old, temp, temporary]
 ledger: governance/retired.md
 reachability-depth: 3
@@ -18,11 +18,12 @@ Adopts the [portable standard](documentation-architecture.md). This is PageFleet
 ## Authority
 
 - [Requirements](../requirements/README.md) state desired outcomes. They are draft and **not evidence of implementation**.
+- [Architecture](../architecture/README.md) records implemented MVP boundaries, not verified Meta account access.
 - [Research](../research/README.md) records uncertain and changing evidence.
 - [Proposals](../proposals/README.md) are not accepted implementation or architecture.
 - [Governance](README.md) owns documentation rules.
 
-No source roots or accepted architecture yet. Add an area only with real content, and add ownership README files and covers relations when source packages appear.
+Source roots are now `src` and `test`, with owning READMEs and an architecture document that covers implementation and tests. This document is on the MVP branch; real Meta publishing remains unverified.
 
 Research IDs are `RES-NNNN`, proposals `PROP-NNNN`; never reuse them. Requirement items are defined in one product document. Retirement means promoting surviving truth, fixing links, then appending a ledger row with Git commit:path.
 

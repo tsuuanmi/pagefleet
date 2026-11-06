@@ -1,0 +1,34 @@
+name: MVP
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax, domain logic and import tests
+        run: npm run check
+      - name: Local HTTP smoke test (mock mode only)
+        run: |
+          set -eu
+          DATA_DIR="$(mktemp -d)"
+          export DATA_DIR PORT=3088 HOST=127.0.0.1 PUBLISHER=mock
+          node src/server.mjs > "$DATA_DIR/server.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; rm -rf "$DATA_DIR"' EXIT
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3088/api/session > "$DATA_DIR/session.json"; then break; fi
+            sleep 1
+          done
+          grep -q '"authenticated":true' "$DATA_DIR/session.json"
+          curl -fsS http://127.0.0.1:3088/api/state > "$DATA_DIR/state.json"
+          grep -q '"pages"' "$DATA_DIR/state.json"
+          curl -fsS -H 'Content-Type: application/json' -H 'X-PageFleet-Request: 1' -d '{"title":"Smoke test","brief":"Local test","page_ids":["page-1"]}' http://127.0.0.1:3088/api/idea > "$DATA_DIR/idea.json"
+          grep -q '"id"' "$DATA_DIR/idea.json"
