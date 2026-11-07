@@ -1,6 +1,8 @@
 # PageFleet
 
-A **local-first AI content studio** for ten authorized Facebook Pages. Seven Pages may share a subject but maintain distinct audiences, voices and post variants. The other three can have separate topics. **MVP is under review in stacked PR #2**, not yet on main.
+A **local-first AI content studio** for ten authorized Facebook Pages. **MVP is under review in stacked PR #2**, not yet on main.
+
+Initial use case: 10 Pages in two Industries (construction works and granite) owned by one company. Planned flow: connect Pages with Facebook Login -> import a spreadsheet Batch or enter a Content idea -> AI-written per-Page variants -> review and approve the Batch -> Meta-native scheduling -> reconcile uncertain outcomes.
 
 ## Start locally
 
@@ -67,3 +69,5 @@ Local workstation can close *after Meta accepts a native scheduled post*, but ca
 Single-process Node app, persistent `DATA_DIR`, backup of SQLite DB + media, and authentication at an HTTPS reverse proxy. Trusted LAN `--public` binding requires `APP_PASSWORD` (16+ characters) and displays a plaintext-HTTP warning. Internet/VPS exposure requires an HTTPS reverse proxy with `PUBLIC_BASE_URL=https://...` (and the password). Do not expose an unauthenticated local instance through a tunnel. No production Docker or backup automation is included in this MVP yet.
 
 Current limitations and trust boundaries are recorded in [MVP architecture](docs/architecture/mvp.md); [research](docs/research/README.md) is not accepted architecture.
+
+The domain language is in [GLOSSARY.md](GLOSSARY.md); accepted rationale is in [decisions](docs/decisions/README.md).
