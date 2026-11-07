@@ -94,3 +94,11 @@ test('template draft uses Page-specific audience and CTA',()=>{
   assert.match(freeDraft({title:'Question',brief:'Tip'},{audience:'shops',cta:'Contact us'}),/shops/);
   assert.match(freeDraft({title:'Question',brief:'Tip'},{audience:'shops',cta:'Contact us'}),/Contact us/);
 });
+test('usage is recorded for a free template generation',()=>{
+  withDB(s=>{
+    const idea=s.createIdea({title:'Data For Life',page_ids:['page-1']});
+    const v=s.q('SELECT * FROM variants WHERE idea_id=?',idea)[0];
+    s.recordUsage(v.id,'template','template',0,0,0);
+    assert.equal(s.snapshot().usage.calls,1);
+  });
+});

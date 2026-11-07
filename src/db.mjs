@@ -198,7 +198,7 @@ export function openStore(root = process.env.DATA_DIR || './data') {
     }
   }
   function recordUsage(variantId, provider, model, inputTokens, outputTokens, cost) {
-    run('INSERT INTO usage VALUES (?,?,?,?,?,?,?)',uuid(),variantId,provider,model,inputTokens,outputTokens,cost,now());
+    run('INSERT INTO usage(id,variant_id,provider,model,input_tokens,output_tokens,cost_usd,created_at) VALUES (?,?,?,?,?,?,?,?)',uuid(),variantId,provider,model,inputTokens,outputTokens,cost,now());
   }
   function allowance() {
     const month = new Date().toISOString().slice(0,7)+'-01';
