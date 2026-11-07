@@ -9,7 +9,7 @@ import { metaConfig, tokenKey, sealToken, openToken, authorizeUrl, connectPages,
 import { openStore } from '../src/db.mjs';
 
 const key = randomBytes(32);
-const cfg = { appId: '123456789', appSecret: 'secret-0123456789abcdef', version: 'v27.0', key };
+const cfg = { appId: '123456789', appSecret: 'secret-0123456789abcdef', version: 'v26.0', key };
 
 /** Fake fetch that records calls and answers from a queue of [status, body] replies. */
 function fakeFetch(replies) {
@@ -71,13 +71,13 @@ test('scheduled multi-photo post uploads temporary photos and attaches them in o
   const result = await scheduleOnMeta(cfg, { pageId: '111', token: 'page-a', message: 'Hello', when, photos }, f);
   assert.deepEqual(result, { remoteId: '111_999', state: 'scheduled' });
   for (const call of f.calls.slice(0, 2)) {
-    assert.equal(call.url.pathname, '/v27.0/111/photos');
+    assert.equal(call.url.pathname, '/v26.0/111/photos');
     assert.equal(call.body.get('published'), 'false');
     assert.equal(call.body.get('temporary'), 'true');
     assert.equal(call.body.get('appsecret_proof'), appSecretProof(cfg.appSecret, 'page-a'));
   }
   const feed = f.calls[2];
-  assert.equal(feed.url.pathname, '/v27.0/111/feed');
+  assert.equal(feed.url.pathname, '/v26.0/111/feed');
   assert.equal(feed.body.get('published'), 'false');
   assert.equal(feed.body.get('unpublished_content_type'), 'SCHEDULED');
   assert.equal(feed.body.get('scheduled_publish_time'), String(Math.floor(Date.parse(when) / 1000)));

@@ -8,8 +8,8 @@ const TIMEOUT_MS = 30_000;
 
 /** Meta settings from the environment, or null when Facebook Login is not configured. */
 export function metaConfig(env = process.env) {
-  const version = env.META_GRAPH_VERSION || 'v27.0';
-  if (!/^v\d+\.\d+$/.test(version)) throw new Error('META_GRAPH_VERSION must look like v27.0');
+  const version = env.META_GRAPH_VERSION || 'v26.0';
+  if (!/^v\d+\.\d+$/.test(version)) throw new Error('META_GRAPH_VERSION must look like v26.0');
   const appId = env.META_APP_ID || '';
   const appSecret = env.META_APP_SECRET || '';
   const rawKey = env.TOKEN_ENCRYPTION_KEY || '';
