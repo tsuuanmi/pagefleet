@@ -8,6 +8,6 @@
     "start": "node src/server.mjs",
     "dev": "node --watch src/server.mjs",
     "test": "node --test test/*.test.mjs",
-    "check": "node --check src/server.mjs && node --check src/db.mjs && node --check src/logic.mjs && node --check src/import.mjs && node --check src/providers.mjs && node --check src/public/app.js && node --check src/cli.mjs && node --check src/demo.mjs && npm test"
+    "check": "node --check src/server.mjs && node --check src/db.mjs && node --check src/logic.mjs && node --check src/import.mjs && node --check src/providers.mjs && node --check src/meta.mjs && node --check src/public/app.js && node --check src/cli.mjs && node --check src/demo.mjs && npm test"
   }
 }

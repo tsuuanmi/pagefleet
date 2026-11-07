@@ -60,7 +60,13 @@ The free offline `template` mode uses provided text, audience and CTA; it is not
 
 Default: `PUBLISHER=mock`. No Facebook posts are sent. Mock posts remain `scheduled` in local records and are **not** actually published.
 
-**Meta trial is an opt-in experimental integration, not validated live:** use an authorized Page and configure each Page's numeric `meta_page_id` and `token_env` in UI; place the matching Page access token in a server environment variable named `META_PAGE_TOKEN_...`. Set `PUBLISHER=meta`, `META_PUBLISH_ENABLED=1` and an actually supported `META_GRAPH_VERSION` for the selected endpoint. Use a real controlled test Page first. The app attempts native scheduling (`published=false`, `scheduled_publish_time`) on Meta's feed endpoint, optionally with a staged photo. **No promise of Page access, photo support or successful posting is made.** Any unknown remote outcome is recorded and blocked from blind repeat; check Meta Business Suite manually.
+**Meta trial is an opt-in experimental integration, not validated live.** Pages are connected with **Connect Facebook** ([ADR-0001](docs/decisions/ADR-0001-oauth-page-connection.md)); no token is ever copied by hand.
+
+1. Create a Meta app (Business type) at developers.facebook.com, keep it in **Development mode**, add **Facebook Login** with redirect URI `http://localhost:3088/oauth/callback` (match your port). Your Facebook account must be an app admin/developer and have full control of the Pages; unpublished test Pages are fine.
+2. Set `META_APP_ID`, `META_APP_SECRET` and `TOKEN_ENCRYPTION_KEY` (see `.env.example`), plus `PUBLISHER=meta`, `META_PUBLISH_ENABLED=1` and a supported `META_GRAPH_VERSION`.
+3. Open **http://localhost:3088** on the same computer, go to **Fanpages → Connect Facebook**, approve the Pages, then use **Cấu hình** to link each PageFleet Page to a connected Facebook Page.
+
+The app uses Meta native scheduling: images are uploaded as temporary unpublished photos and attached in order to a scheduled `/feed` post. **No promise of Page access, photo support or successful posting is made.** Any unknown remote outcome is recorded and blocked from blind repeat; check Meta Business Suite manually.
 
 Local workstation can close *after Meta accepts a native scheduled post*, but cannot create or send future jobs while closed. A VPS is optional for future fully unattended queue refill and collaboration.
 

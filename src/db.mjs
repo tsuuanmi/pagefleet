@@ -2,7 +2,9 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
-import { uuid, now, mustText, optionalText, safeEnvKey, apiError } from './logic.mjs';
+import { uuid, now, mustText, optionalText, apiError } from './logic.mjs';
+
+export const MAX_IMAGES = 10;
 
 export function openStore(root = process.env.DATA_DIR || './data') {
   const folder = resolve(root);
@@ -45,7 +47,20 @@ export function openStore(root = process.env.DATA_DIR || './data') {
       provider TEXT NOT NULL, model TEXT NOT NULL, input_tokens INTEGER NOT NULL,
       output_tokens INTEGER NOT NULL, cost_usd REAL, created_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS idea_media (
+      idea_id TEXT NOT NULL REFERENCES ideas(id), media_id TEXT NOT NULL REFERENCES media(id),
+      position INTEGER NOT NULL, PRIMARY KEY(idea_id, position), UNIQUE(idea_id, media_id)
+    );
+    -- Page connections from Facebook Login (ADR-0001). token_sealed is AES-256-GCM ciphertext, never plaintext.
+    CREATE TABLE IF NOT EXISTS meta_pages (
+      meta_page_id TEXT PRIMARY KEY, name TEXT NOT NULL, tasks TEXT NOT NULL DEFAULT '',
+      token_sealed TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('connected','needs_reconnect')),
+      connected_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
   `);
+  // One-time move of the earlier single image per idea into the ordered list.
+  db.exec(`INSERT OR IGNORE INTO idea_media(idea_id,media_id,position)
+    SELECT id,image_id,0 FROM ideas WHERE image_id IS NOT NULL AND id NOT IN (SELECT idea_id FROM idea_media)`);
   const count = db.prepare('SELECT count(*) AS n FROM pages').get().n;
   if (count === 0) {
     const insert = db.prepare('INSERT INTO pages(id,name,topic,audience,voice,cta) VALUES(?,?,?,?,?,?)');
@@ -69,11 +84,13 @@ export function openStore(root = process.env.DATA_DIR || './data') {
       FROM variants v JOIN pages p ON v.page_id=p.id JOIN ideas i ON v.idea_id=i.id
       ORDER BY i.created_at DESC, p.id`);
     const deliveries = q('SELECT * FROM deliveries ORDER BY created_at DESC');
+    const images = q('SELECT idea_id, media_id, position FROM idea_media ORDER BY idea_id, position');
+    const connections = q(`SELECT meta_page_id, name, tasks, status, connected_at, updated_at FROM meta_pages ORDER BY name`);
     const usage = one(`SELECT count(*) AS calls, COALESCE(sum(input_tokens),0) AS input_tokens,
       COALESCE(sum(output_tokens),0) AS output_tokens, sum(cost_usd) AS cost_usd,
       sum(CASE WHEN cost_usd IS NULL THEN 1 ELSE 0 END) AS unpriced
       FROM usage WHERE created_at>=?`, new Date().toISOString().slice(0, 7) + '-01');
-    return { pages, ideas, variants, deliveries, usage, publisher: process.env.PUBLISHER === 'meta' ? 'meta' : 'mock',
+    return { pages, ideas, variants, deliveries, images, connections, usage, publisher: process.env.PUBLISHER === 'meta' ? 'meta' : 'mock',
       ai: { template: true, openai: !!process.env.OPENAI_API_KEY, anthropic: !!process.env.ANTHROPIC_API_KEY } };
   }
 
@@ -85,10 +102,14 @@ export function openStore(root = process.env.DATA_DIR || './data') {
     const voice = optionalText(fields.voice, 300);
     const cta = optionalText(fields.cta, 300);
     const metaId = optionalText(fields.meta_page_id, 40);
-    if (metaId && !/^\d{5,30}$/.test(metaId)) throw apiError('Meta Page ID must contain digits only');
-    const tokenEnv = safeEnvKey(fields.token_env);
-    run('UPDATE pages SET name=?,topic=?,audience=?,voice=?,cta=?,meta_page_id=?,token_env=? WHERE id=?',
-      name,topic,audience,voice,cta,metaId,tokenEnv,id);
+    if (metaId) {
+      const link = one('SELECT tasks FROM meta_pages WHERE meta_page_id=?', metaId);
+      if (!link) throw apiError('Choose a Facebook Page from your connected Pages');
+      if (!link.tasks.split(',').includes('CREATE_CONTENT')) throw apiError('Your Facebook role on that Page cannot create content');
+      if (one('SELECT id FROM pages WHERE meta_page_id=? AND id<>?', metaId, id)) throw apiError('That Facebook Page is already linked to another Page', 409);
+    }
+    run("UPDATE pages SET name=?,topic=?,audience=?,voice=?,cta=?,meta_page_id=?,token_env='' WHERE id=?",
+      name,topic,audience,voice,cta,metaId,id);
     return one('SELECT * FROM pages WHERE id=?', id);
   }
 
@@ -99,12 +120,15 @@ export function openStore(root = process.env.DATA_DIR || './data') {
     const ids = [...new Set(input.page_ids || [])];
     if (!Array.isArray(input.page_ids) || ids.length < 1 || ids.length > 10) throw apiError('Choose 1–10 Pages');
     for (const id of ids) if (!one('SELECT id FROM pages WHERE id=?', id)) throw apiError('Unknown Page: ' + id);
-    if (input.image_id && !one('SELECT id FROM media WHERE id=?', input.image_id)) throw apiError('Unknown image');
+    const imageIds = [...new Set(input.image_ids || (input.image_id ? [input.image_id] : []))];
+    if (imageIds.length > MAX_IMAGES) throw apiError('At most ' + MAX_IMAGES + ' images per post');
+    for (const mediaId of imageIds) if (!one('SELECT id FROM media WHERE id=?', mediaId)) throw apiError('Unknown image');
     const id=uuid(), time=now();
     db.exec('BEGIN IMMEDIATE');
     try {
       run('INSERT INTO ideas(id,title,brief,image_hint,image_id,created_at) VALUES(?,?,?,?,?,?)',
-        id,title,brief,imageHint,input.image_id || null,time);
+        id,title,brief,imageHint,null,time);
+      imageIds.forEach((mediaId, position) => run('INSERT INTO idea_media(idea_id,media_id,position) VALUES(?,?,?)', id, mediaId, position));
       for(const pageId of ids)run('INSERT INTO variants(id,idea_id,page_id,updated_at) VALUES(?,?,?,?)',uuid(),id,pageId,time);
       db.exec('COMMIT');
     } catch(e){db.exec('ROLLBACK');throw e;}
@@ -113,7 +137,7 @@ export function openStore(root = process.env.DATA_DIR || './data') {
 
   function variant(id) {
     const item = one(`SELECT v.*,i.title,i.brief,i.image_id,i.image_hint,p.name,p.topic,p.audience,
-      p.voice,p.cta,p.meta_page_id,p.token_env FROM variants v
+      p.voice,p.cta,p.meta_page_id FROM variants v
       JOIN ideas i ON v.idea_id=i.id JOIN pages p ON v.page_id=p.id WHERE v.id=?`,id);
     if(!item) throw apiError('Variant not found',404);
     return item;
@@ -192,15 +216,57 @@ export function openStore(root = process.env.DATA_DIR || './data') {
     return one('SELECT * FROM media WHERE id=?',id);
   }
   function media(id) {return one('SELECT * FROM media WHERE id=?',id);}
-  function attachImage(ideaId,imageId) {
+  function ideaImages(ideaId) {
+    return q(`SELECT m.* FROM idea_media im JOIN media m ON m.id=im.media_id WHERE im.idea_id=? ORDER BY im.position`, ideaId);
+  }
+  function changeImages(ideaId, change) {
     if(!one('SELECT id FROM ideas WHERE id=?',ideaId))throw apiError('Idea not found',404);
-    if(!media(imageId))throw apiError('Image not found',404);
     if(one(`SELECT id FROM variants WHERE idea_id=? AND status IN ('submitting','scheduled','unknown','published') LIMIT 1`,ideaId))
-      throw apiError('Cannot change image after a variant is submitted',409);
-    run('UPDATE ideas SET image_id=? WHERE id=?',imageId,ideaId);
-    run("UPDATE variants SET approved_revision=NULL,status='draft',approved_at=NULL,revision=revision+1,updated_at=? WHERE idea_id=?",now(),ideaId);
+      throw apiError('Cannot change images after a variant is submitted',409);
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      change();
+      // Images are part of what gets approved: any change invalidates every approval of this idea.
+      run("UPDATE variants SET approved_revision=NULL,status='draft',approved_at=NULL,revision=revision+1,updated_at=? WHERE idea_id=?",now(),ideaId);
+      db.exec('COMMIT');
+    } catch(e){db.exec('ROLLBACK');throw e;}
+  }
+  /** Append an image at the end of the idea's ordered list. */
+  function addImage(ideaId,imageId) {
+    if(!media(imageId))throw apiError('Image not found',404);
+    changeImages(ideaId,()=>{
+      const {n,last}=one('SELECT count(*) AS n, max(position) AS last FROM idea_media WHERE idea_id=?',ideaId);
+      if(n>=MAX_IMAGES)throw apiError('At most '+MAX_IMAGES+' images per post');
+      if(one('SELECT 1 AS x FROM idea_media WHERE idea_id=? AND media_id=?',ideaId,imageId))throw apiError('That image is already attached');
+      run('INSERT INTO idea_media(idea_id,media_id,position) VALUES(?,?,?)',ideaId,imageId,last==null?0:last+1);
+    });
+  }
+  function clearImages(ideaId) {
+    changeImages(ideaId,()=>run('DELETE FROM idea_media WHERE idea_id=?',ideaId));
   }
 
+  /** Store Pages returned by Facebook Login; previously connected Pages missing from the list need reconnect. */
+  function saveConnections(list) {
+    const time=now();
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      run("UPDATE meta_pages SET status='needs_reconnect',updated_at=?",time);
+      for(const p of list){
+        run(`INSERT INTO meta_pages(meta_page_id,name,tasks,token_sealed,status,connected_at,updated_at) VALUES(?,?,?,?,'connected',?,?)
+          ON CONFLICT(meta_page_id) DO UPDATE SET name=excluded.name,tasks=excluded.tasks,token_sealed=excluded.token_sealed,
+          status='connected',connected_at=excluded.connected_at,updated_at=excluded.updated_at`,
+          p.id,p.name,p.tasks.join(','),p.sealed,time,time);
+      }
+      db.exec('COMMIT');
+    } catch(e){db.exec('ROLLBACK');throw e;}
+  }
+  function connection(metaPageId) { return one('SELECT * FROM meta_pages WHERE meta_page_id=?',metaPageId); }
+  function markNeedsReconnect(metaPageId) {
+    run("UPDATE meta_pages SET status='needs_reconnect',updated_at=? WHERE meta_page_id=?",now(),metaPageId);
+  }
+  function disconnectAll() { run('DELETE FROM meta_pages'); }
+
   return { db, snapshot, q, one, run, updatePage, createIdea, variant, updateVariant, approve, reserve,
-    finish, recoverInterrupted, recordUsage, allowance, saveMedia, media, attachImage, close:()=>db.close() };
+    finish, recoverInterrupted, recordUsage, allowance, saveMedia, media, ideaImages, addImage, clearImages,
+    saveConnections, connection, markNeedsReconnect, disconnectAll, close:()=>db.close() };
 }

@@ -8,18 +8,24 @@ import { parseServerConfig, validateRequestHost } from './cli.mjs';
 import { seedDemo } from './demo.mjs';
 import { mustText, verifyImage, validateSchedule, apiError } from './logic.mjs';
 import { importIdeas, csvRows, xlsxRows } from './import.mjs';
-import { generate, preflightGeneration, submitScheduled } from './providers.mjs';
+import { generate, preflightGeneration, mockSchedule } from './providers.mjs';
+import { metaConfig, authorizeUrl, connectPages, sealToken, openToken, scheduleOnMeta, MetaError } from './meta.mjs';
 
 const config=parseServerConfig(process.argv.slice(2));
 if (config.help) { console.log(config.usage); process.exit(0); }
 const root=dirname(fileURLToPath(import.meta.url));
 const { port, host, publicBase }=config;
 const directory=config.demo ? join(process.env.DATA_DIR||'./data','demo') : (process.env.DATA_DIR||'./data');
+const meta=config.demo ? null : metaConfig();
+if(process.env.PUBLISHER==='meta' && !config.demo && !meta)
+  throw new Error('PUBLISHER=meta requires META_APP_ID, META_APP_SECRET and TOKEN_ENCRYPTION_KEY (see .env.example)');
 const store=openStore(directory);
 store.recoverInterrupted();
 if (config.demo) seedDemo(store, console.log);
 const live=process.env.APP_PASSWORD||'';
 const sessions=new Set();
+// One-time OAuth states created by an authenticated /oauth/start; they authorize the matching callback.
+const oauthStates=new Map();
 const pendingAI=new Set();
 let busyAI=false;
 const maxReq=Number(process.env.AI_MONTHLY_REQUEST_LIMIT||200);
@@ -59,6 +65,14 @@ function checkOrigin(req){
 }
 function requireAuth(req){
   if(!authenticated(req))throw apiError('Login required',401);
+}
+// Meta allows plain-HTTP redirects only to localhost (Development mode); otherwise HTTPS via PUBLIC_BASE_URL.
+function connectOrigin(){return publicBase?new URL(publicBase).origin:'http://localhost:'+port;}
+function oauthRedirect(req){
+  const origin=connectOrigin();
+  if(new URL(origin).host!==req.headers.host)
+    throw apiError('Open '+origin+' on the computer running PageFleet to connect Facebook',400);
+  return origin+'/oauth/callback';
 }
 const limitRoutes=new Map();
 function attemptLimit(req,route,limit=30){
@@ -101,9 +115,42 @@ async function route(req,res) {
     checkOrigin(req);sessions.delete(createHash('sha256').update(sessionFrom(req)).digest('hex'));
     json(res,200,{ok:true},{'Set-Cookie':'pf_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0'+(publicBase?'; Secure':'')});return;
   }
+  if(req.method==='GET'&&path==='/oauth/start'){
+    if(!authenticated(req)){
+      res.writeHead(302,{Location:'/?'+new URLSearchParams({oauth_error:'Log in on this address first, then click Connect Facebook again.'}),'Cache-Control':'no-store'});
+      res.end();return;
+    }
+    if(!meta)throw apiError('Facebook Login is not configured (META_APP_ID, META_APP_SECRET, TOKEN_ENCRYPTION_KEY)',409);
+    const redirectUri=oauthRedirect(req);
+    for(const [k,v] of oauthStates)if(v.expires<Date.now())oauthStates.delete(k);
+    if(oauthStates.size>20)throw apiError('Too many pending Facebook connections; retry in a few minutes',429);
+    const stateId=randomBytes(24).toString('hex');
+    oauthStates.set(stateId,{redirectUri,expires:Date.now()+10*60_000});
+    res.writeHead(302,{Location:authorizeUrl(meta,redirectUri,stateId),'Cache-Control':'no-store','Referrer-Policy':'no-referrer'});
+    res.end();return;
+  }
+  if(req.method==='GET'&&path==='/oauth/callback'){
+    const params=new URL(req.url,'http://local').searchParams;
+    const pending=oauthStates.get(params.get('state')||'');
+    oauthStates.delete(params.get('state')||'');
+    const back=message=>{res.writeHead(302,{Location:'/?'+new URLSearchParams(message),'Cache-Control':'no-store','Referrer-Policy':'no-referrer'});res.end();};
+    if(!meta||!pending||pending.expires<Date.now())return back({oauth_error:'Facebook connection expired or was not started here; try Connect Facebook again.'});
+    if(params.get('error'))return back({oauth_error:'Facebook connection cancelled: '+String(params.get('error_description')||params.get('error')).slice(0,160)});
+    try{
+      const pages=await connectPages(meta,pending.redirectUri,String(params.get('code')||''));
+      store.saveConnections(pages.map(p=>({id:p.id,name:p.name,tasks:p.tasks,sealed:sealToken(meta.key,p.id,p.token)})));
+      return back({connected:String(pages.length)});
+    }catch(error){
+      return back({oauth_error:'Facebook connection failed: '+String(error.message).slice(0,200)});
+    }
+  }
   if(!path.startsWith('/api/'))throw apiError('Not found',404);
   requireAuth(req);
-  if(req.method==='GET'&&path==='/api/state'){json(res,200,{...store.snapshot(),demo:config.demo,ai:config.demo?{template:true,openai:false,anthropic:false}:store.snapshot().ai});return;}
+  if(req.method==='GET'&&path==='/api/state'){
+    const snapshot=store.snapshot();
+    json(res,200,{...snapshot,demo:config.demo,ai:config.demo?{template:true,openai:false,anthropic:false}:snapshot.ai,
+      facebook:{configured:!!meta,connectUrl:meta?connectOrigin()+'/oauth/start':null}});return;
+  }
   if(req.method==='GET'&&path.startsWith('/api/media/')){
     const media=store.media(path.slice('/api/media/'.length));
     if(!media)throw apiError('Media not found',404);
@@ -146,7 +193,15 @@ async function route(req,res) {
     json(res,201,{id:media.id,size:media.size});return;
   }
   if(path==='/api/attach'){
-    store.attachImage(mustText(body.idea_id,'Idea id',80),mustText(body.image_id,'Image id',80));
+    store.addImage(mustText(body.idea_id,'Idea id',80),mustText(body.image_id,'Image id',80));
+    json(res,200,{ok:true});return;
+  }
+  if(path==='/api/images/clear'){
+    store.clearImages(mustText(body.idea_id,'Idea id',80));
+    json(res,200,{ok:true});return;
+  }
+  if(path==='/api/facebook/disconnect'){
+    store.disconnectAll();
     json(res,200,{ok:true});return;
   }
   if(path==='/api/variant'){
@@ -183,17 +238,31 @@ async function route(req,res) {
   if(path==='/api/schedule'){
     const id=mustText(body.id,'Variant id',80),date=validateSchedule(body.scheduled_at);
     const provider=config.demo?'mock':process.env.PUBLISHER==='meta'?'meta':'mock';
-    if(provider==='meta'&&process.env.META_PUBLISH_ENABLED!=='1')throw apiError('Meta publishing must be explicitly enabled',409);
+    let token=null,photos=[];
+    if(provider==='meta'){
+      if(process.env.META_PUBLISH_ENABLED!=='1')throw apiError('Meta publishing must be explicitly enabled',409);
+      const target=store.variant(id);
+      const link=target.meta_page_id?store.connection(target.meta_page_id):null;
+      if(!link)throw apiError('Link this Page to a connected Facebook Page first',409);
+      if(link.status!=='connected')throw apiError('Facebook Page needs reconnect; use Connect Facebook again',409);
+      token=openToken(meta.key,link.meta_page_id,link.token_sealed);
+      // Read local files before reserving: a local failure here must not leave an "unknown" delivery.
+      photos=store.ideaImages(target.idea_id).map(m=>({bytes:readFileSync(m.filepath),mime:m.mime,filename:m.filename}));
+    }
     // Reserve before network calls, so retries never silently double-publish.
     const {deliveryId,variant:v}=store.reserve(id,date,provider,body.revision);
-    const media=v.image_id?store.media(v.image_id):null;
     try{
-      const result=await submitScheduled(v,date,media);
+      const result=provider==='meta'
+        ? await scheduleOnMeta(meta,{pageId:v.meta_page_id,token,message:v.body,when:date,photos})
+        : mockSchedule();
       store.finish(deliveryId,result.state,result.remoteId);
       json(res,200,{deliveryId,state:result.state,provider,remoteId:result.remoteId});return;
     }catch(error){
-      // Some API/network errors can occur after Meta accepted a post. Never retry blindly.
-      store.finish(deliveryId,provider==='meta'?'unknown':'failed',null,String(error.message||'Submission failed').slice(0,350));
+      // Meta answered with an error: nothing was created, so the delivery failed. Anything else
+      // (timeout, network, unreadable reply, local crash) may have reached Meta: unknown, never retried blindly.
+      const definitive=provider!=='meta'||(error instanceof MetaError&&error.definitive);
+      if(error instanceof MetaError&&error.needsReconnect)store.markNeedsReconnect(v.meta_page_id);
+      store.finish(deliveryId,definitive?'failed':'unknown',null,String(error.message||'Submission failed').slice(0,350));
       throw error;
     }
   }

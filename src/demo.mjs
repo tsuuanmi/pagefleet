@@ -51,7 +51,7 @@ const topicSets = [
 export function seedDemo(store, log = () => {}) {
   if (store.one('SELECT count(*) AS n FROM ideas').n > 0) return { seeded: false };
   examples.forEach(([name,topic,audience,voice,cta],i) => {
-    store.updatePage('page-'+(i+1),{name,topic,audience,voice,cta,meta_page_id:'',token_env:''});
+    store.updatePage('page-'+(i+1),{name,topic,audience,voice,cta,meta_page_id:''});
   });
   let variants = 0, scheduled = 0;
   const base = Date.now();

@@ -14,7 +14,7 @@ const $=selector=>document.querySelector(selector);
 const e=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 let state,tab='overview',modalSubmit=null;
 const tabs={overview:['Tổng quan','Quản lý nội dung cho nhiều Fanpage trong một nơi.'],ideas:['Nội dung','Tạo ý tưởng, biên tập biến thể và duyệt bài đăng.'],pages:['Fanpages','Giọng văn và đối tượng riêng cho từng Page.'],calendar:['Lịch đăng','Các bài đã gửi vào lịch publisher.']};
-const badge=s=>'<span class="pill '+e(s)+'">'+e(({draft:'Bản nháp',approved:'Đã duyệt',submitting:'Đang gửi',scheduled:'Đã lên lịch',unknown:'Cần đối soát',failed:'Lỗi',published:'Đã đăng'})[s]||s)+'</span>';
+const badge=s=>'<span class="pill '+e(s)+'">'+e(({connected:'Connected',needs_reconnect:'Needs reconnect',draft:'Bản nháp',approved:'Đã duyệt',submitting:'Đang gửi',scheduled:'Đã lên lịch',unknown:'Cần đối soát',failed:'Lỗi',published:'Đã đăng'})[s]||s)+'</span>';
 async function request(path,body) {
   const resp=await fetch('/api'+path,{method:'POST',headers:{'Content-Type':'application/json','X-PageFleet-Request':'1'},body:JSON.stringify(body)});
   const payload=await resp.json();
@@ -57,7 +57,14 @@ function render() {
     <div class="number" style="font-size:32px;font-weight:750;margin:12px 0">$${Number(cost).toFixed(4)}</div><div class="muted">${e(state.usage.calls)} lượt tạo · ${e(state.usage.input_tokens)} input tokens · ${e(state.usage.output_tokens)} output tokens</div>
     <p class="hint">Giá hiện tại theo cấu hình server; ${e(state.usage.unpriced)} lượt chưa có đơn giá. Chưa gồm hosting, ảnh, hỗ trợ.</p>
     <hr style="border:0;border-top:1px solid var(--line);margin:18px 0"><strong>Cách bắt đầu</strong><p class="muted">1. Cập nhật Page Profiles.<br>2. Import hoặc nhập ý tưởng.<br>3. Tạo nội dung → duyệt → lên lịch.</p></div></div>`;
-  $('#pages').innerHTML=`<div class="section-head"><h2>10 Fanpages</h2><span class="muted">Lưu cấu hình phong cách riêng</span></div><div class="page-grid">${state.pages.map((p,i)=>`<div class="page-card"><span class="page-icon">${i+1}</span><h3>${e(p.name)}</h3><div class="muted">${e(p.topic)}</div><p>${e(p.voice||'Chưa có hướng dẫn giọng văn')} · ${e(p.audience||'Chưa có đối tượng')}</p><div class="section-head"><span class="pill">${p.meta_page_id?'Meta ID đã đặt':'Chưa kết nối Meta'}</span><button class="small outline" data-action="page" data-id="${e(p.id)}">Cấu hình</button></div></div>`).join('')}</div>`;
+  const fb=state.facebook||{};
+  const linkStatus=p=>{const c=state.connections.find(x=>x.meta_page_id===p.meta_page_id);return !p.meta_page_id?'Not linked to Facebook':!c?'Facebook Page not connected':c.status==='connected'?'Facebook: '+c.name:'Needs reconnect';};
+  const facebookPanel=state.demo?'':`<div class="panel fb-panel"><div class="section-head"><h2>Facebook connection</h2>
+    ${fb.configured?`<div class="btn-group"><a class="button primary" href="${e(fb.connectUrl)}">Connect Facebook</a>${state.connections.length?'<button class="small outline" data-action="disconnect">Disconnect all</button>':''}</div>`:'<span class="pill">Not configured</span>'}</div>
+    ${fb.configured?`<p class="hint">Connect from the computer running PageFleet (${e(fb.connectUrl.replace('/oauth/start',''))}). Tokens are stored encrypted on the server and never sent to the browser.</p>
+    <div class="list">${state.connections.map(c=>`<div class="entry"><div><strong>${e(c.name)}</strong><div class="muted">ID ${e(c.meta_page_id)} · ${c.tasks.split(',').includes('CREATE_CONTENT')?'can create content':'no CREATE_CONTENT task'}</div></div>${badge(c.status)}</div>`).join('')||'<div class="empty">No Facebook Pages connected yet.</div>'}</div>`
+    :'<p class="hint">Set META_APP_ID, META_APP_SECRET and TOKEN_ENCRYPTION_KEY on the server to enable Connect Facebook.</p>'}</div>`;
+  $('#pages').innerHTML=facebookPanel+`<div class="section-head"><h2>10 Fanpages</h2><span class="muted">Lưu cấu hình phong cách riêng</span></div><div class="page-grid">${state.pages.map((p,i)=>`<div class="page-card"><span class="page-icon">${i+1}</span><h3>${e(p.name)}</h3><div class="muted">${e(p.topic)}</div><p>${e(p.voice||'Chưa có hướng dẫn giọng văn')} · ${e(p.audience||'Chưa có đối tượng')}</p><div class="section-head"><span class="pill">${e(linkStatus(p))}</span><button class="small outline" data-action="page" data-id="${e(p.id)}">Cấu hình</button></div></div>`).join('')}</div>`;
   $('#ideas').innerHTML=`<div class="toolbar"><h2>${state.ideas.length} ý tưởng · ${state.variants.length} biến thể</h2><div class="btn-group"><button data-action="import">↑ Import CSV / Excel</button><button class="primary" data-action="new">+ Tạo mới</button></div></div>
     <div class="table-wrap"><table><thead><tr><th>Ý tưởng / Fanpage</th><th>Nội dung</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>
     ${state.variants.map(v=>`<tr><td><strong>${e(v.idea_title)}</strong><br><span class="muted">${e(v.page_name)}</span></td><td style="max-width:250px"><span title="${e(v.body)}">${e((v.body||'Chưa tạo nội dung').slice(0,90))}</span></td><td>${badge(v.status)}</td><td><div class="btn-group">
@@ -95,9 +102,12 @@ function pageForm(id){
   modal('Cấu hình '+p.name,'Page ID và tên biến môi trường token chỉ dùng khi bật Meta Publisher.',
     input('name','Tên Page',p.name,'text',true)+input('topic','Lĩnh vực',p.topic)+
     input('audience','Nhóm độc giả',p.audience)+input('voice','Giọng văn / góc nhìn',p.voice)+
-    input('cta','Call to action',p.cta)+input('meta_page_id','Facebook Page ID',p.meta_page_id)+
-    input('token_env','Tên biến môi trường chứa Page token',p.token_env),
-    'Lưu cấu hình',async()=>{await request('/page',{id,...Object.fromEntries(['name','topic','audience','voice','cta','meta_page_id','token_env'].map(k=>[k,field(k)]))});return 'Đã cập nhật Page.'});
+    input('cta','Call to action',p.cta)+
+    '<label for="f-meta_page_id">Facebook Page</label><select id="f-meta_page_id" name="meta_page_id"><option value="">Not linked</option>'+
+    state.connections.filter(c=>c.tasks.split(',').includes('CREATE_CONTENT')).map(c=>'<option value="'+e(c.meta_page_id)+'"'+(c.meta_page_id===p.meta_page_id?' selected':'')+'>'+e(c.name)+' ('+e(c.meta_page_id)+')</option>').join('')+
+    (p.meta_page_id&&!state.connections.some(c=>c.meta_page_id===p.meta_page_id)?'<option value="'+e(p.meta_page_id)+'" selected>'+e(p.meta_page_id)+' (not connected)</option>':'')+'</select>'+
+    '<p class="hint">Only Pages from Connect Facebook where your role can create content are listed.</p>',
+    'Lưu cấu hình',async()=>{await request('/page',{id,...Object.fromEntries(['name','topic','audience','voice','cta','meta_page_id'].map(k=>[k,field(k)]))});return 'Đã cập nhật Page.'});
 }
 function editVariant(id) {
   const v=state.variants.find(x=>x.id===id);
@@ -130,21 +140,32 @@ function scheduleVariant(id){
 }
 function attachImageDialog(variantId) {
   const v=state.variants.find(x=>x.id===variantId);
-  const idea=state.ideas.find(x=>x.id===v.idea_id);
-  modal('Ảnh đính kèm','Ảnh thuộc ý tưởng và áp dụng cho tất cả Page; thay ảnh sẽ huỷ duyệt cũ.',
-    '<label for="f-attachment">JPEG / PNG / WebP · tối đa 4 MB</label><input id="f-attachment" type="file" accept="image/jpeg,image/png,image/webp" required>' +
-    (idea.image_id?'<p class="hint">Đã có ảnh. Tải ảnh mới để thay thế.</p>':''),
-    'Lưu ảnh', async()=>{
-      const file=$('#f-attachment').files[0];
-      if(!file)throw Error('Chọn ảnh trước.');
-      if(file.size>4*1024*1024)throw Error('Ảnh lớn hơn 4 MB.');
-      if(!['image/jpeg','image/png','image/webp'].includes(file.type))throw Error('Chỉ hỗ trợ JPEG, PNG, WebP.');
-      const bytes=new Uint8Array(await file.arrayBuffer());
-      let binary='';for(const b of bytes)binary+=String.fromCharCode(b);
-      const result=await request('/media',{filename:file.name,mime:file.type,data:btoa(binary)});
-      await request('/attach',{idea_id:v.idea_id,image_id:result.id});
-      return 'Đã lưu ảnh; các phiên bản cần được duyệt lại.';
+  const images=state.images.filter(x=>x.idea_id===v.idea_id);
+  modal('Images','Images belong to the idea and are posted to every Page in this order (max 10). Any change cancels earlier approvals.',
+    (images.length?'<div class="list">'+images.map((m,i)=>'<div class="entry"><span>#'+(i+1)+'</span><img alt="" src="/api/media/'+e(m.media_id)+'" class="image-thumb"></div>').join('')+'</div>':'<p class="hint">No images yet.</p>')+
+    (images.length?'<button type="button" class="small outline" id="clearImages">Remove all images</button>':'')+
+    '<label for="f-attachment">Add images at the end · JPEG / PNG / WebP · max 4 MB each</label><input id="f-attachment" type="file" accept="image/jpeg,image/png,image/webp" multiple>',
+    'Add images', async()=>{
+      const files=[...$('#f-attachment').files];
+      if(!files.length)throw Error('Choose at least one image.');
+      if(images.length+files.length>10)throw Error('At most 10 images per post.');
+      for(const file of files){
+        if(file.size>4*1024*1024)throw Error(file.name+' is larger than 4 MB.');
+        if(!['image/jpeg','image/png','image/webp'].includes(file.type))throw Error(file.name+': only JPEG, PNG, WebP.');
+      }
+      for(const file of files){
+        const bytes=new Uint8Array(await file.arrayBuffer());
+        let binary='';for(const b of bytes)binary+=String.fromCharCode(b);
+        const result=await request('/media',{filename:file.name,mime:file.type,data:btoa(binary)});
+        await request('/attach',{idea_id:v.idea_id,image_id:result.id});
+      }
+      return 'Added '+files.length+' image(s); variants of this idea need approval again.';
     });
+  $('#clearImages')?.addEventListener('click',async()=>{
+    if(!confirm('Remove all images from this idea? Approvals will be cancelled.'))return;
+    try{await request('/images/clear',{idea_id:v.idea_id});$('#dialog').close();await load();announce('Images removed.');}
+    catch(err){announce(err.message,true);}
+  });
 }
 function importDialog(){
   modal('Import Excel / CSV','Cột bắt buộc: title. Tuỳ chọn: brief, hint, image, pages (page-1,page-2).',
@@ -171,6 +192,10 @@ async function runAction(action,id){
   if(action==='generate')return generateVariant(id);
   if(action==='image')return attachImageDialog(id);
   if(action==='schedule')return scheduleVariant(id);
+  if(action==='disconnect'){
+    if(!confirm('Delete all stored Facebook Page tokens? Scheduled posts already on Facebook are not affected.'))return;
+    await request('/facebook/disconnect',{});await load();announce('Facebook disconnected.');
+  }
   if(action==='approve'){
     const v=state.variants.find(x=>x.id===id);
     if(!confirm('Duyệt bản '+v.revision+' cho '+v.page_name+'?'))return;
@@ -206,5 +231,9 @@ $('#logout').addEventListener('click',async()=>{await request('/logout',{});loca
     $('#app').hidden=!r.authenticated;
     $('#logout').hidden=!r.passwordRequired;
     if(r.authenticated)await load();
+    const q=new URLSearchParams(location.search);
+    if(q.has('connected')&&r.authenticated){tab='pages';render();announce('Connected '+q.get('connected')+' Facebook Page(s). Link them to your Pages with Configure.');}
+    if(q.has('oauth_error'))announce(q.get('oauth_error'),true);
+    if(q.has('connected')||q.has('oauth_error'))history.replaceState(null,'','/');
   }catch(err){announce(err.message,true);}
 })();

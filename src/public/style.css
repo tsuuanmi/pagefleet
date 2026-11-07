@@ -19,3 +19,5 @@
 :root[data-theme=dark] .outline{border-color:#6485c4;color:#cad9ff}
 :root[data-theme=dark] .page-icon{background:var(--nav-active)}
 @media(max-width:640px){.header-actions{flex-wrap:wrap}}
+a.button{display:inline-block;text-decoration:none;border:1px solid var(--line);padding:9px 14px;border-radius:9px;font-weight:600}a.button.primary{color:#fff}.pill.connected{background:var(--badge-success-bg);color:var(--badge-success-ink)}.pill.needs_reconnect{background:var(--badge-error-bg);color:var(--badge-error-ink)}
+.fb-panel{margin-bottom:18px}

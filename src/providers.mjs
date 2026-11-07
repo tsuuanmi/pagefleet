@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { variantPrompt, freeDraft, apiError } from './logic.mjs';
 
 function price(provider) {
@@ -55,45 +55,7 @@ export function preflightGeneration(provider) {
   const rate=price(provider);
   return (3500*rate.input+1200*rate.output)/1_000_000;
 }
-async function metaCall(path,body,token) {
-  const version=process.env.META_GRAPH_VERSION||'v27.0';
-  if(!/^v\d+\.\d+$/.test(version))throw apiError('Invalid META_GRAPH_VERSION');
-  const url='https://graph.facebook.com/'+version+'/'+path;
-  const r=await fetch(url,{method:'POST',signal:timeoutSignal(),body:new URLSearchParams({...body,access_token:token})});
-  let data;try{data=await r.json();}catch{throw apiError('Meta returned invalid JSON (remote outcome unknown)',502);}
-  if(!r.ok)throw apiError('Meta HTTP '+r.status+': '+String(data.error?.message||'rejected').slice(0,240),502);
-  if(!data.id && !data.post_id)throw apiError('Meta response lacks a post ID (remote outcome unknown)',502);
-  return data;
+/** Mock publisher: records a fake remote ID; nothing is sent to Facebook. */
+export function mockSchedule() {
+  return { remoteId: 'mock-' + randomUUID(), state: 'scheduled' };
 }
-export async function submitScheduled(v,when,media) {
-  const mode=process.env.PUBLISHER==='meta'?'meta':'mock';
-  if(mode==='mock')return {remoteId:'mock-'+cryptoRandom(),state:'scheduled'};
-  if(process.env.META_PUBLISH_ENABLED!=='1')throw apiError('Meta publishing is disabled. Set META_PUBLISH_ENABLED=1 explicitly.',409);
-  if(!v.meta_page_id || !v.token_env)throw apiError('Configure Meta Page ID and token env variable first',409);
-  const token=process.env[v.token_env];
-  if(!token)throw apiError('Missing configured Page access token in server environment',409);
-  const scheduled=Math.floor(Date.parse(when)/1000);
-  if(media){
-    // Staged unpublished photo; use attached_media on /feed for native scheduling.
-    // Actual media combination must be verified on a consented test Page before broad use.
-    const bytes=readFileSync(media.filepath);
-    if(bytes.length>4*1024*1024)throw apiError('Media exceeds 4 MB');
-    const upload=new FormData();
-    upload.set('access_token',token);upload.set('published','false');
-    upload.set('source',new Blob([bytes],{type:media.mime}),media.filename||'image');
-    const version=process.env.META_GRAPH_VERSION||'v27.0';
-    if(!/^v\d+\.\d+$/.test(version))throw apiError('Invalid Meta Graph version');
-    const photo=await fetch('https://graph.facebook.com/'+version+'/'+encodeURIComponent(v.meta_page_id)+'/photos',
-      {method:'POST',signal:timeoutSignal(),body:upload});
-    const data=await photo.json();
-    if(!photo.ok||!data.id)throw apiError('Meta photo upload: '+String(data.error?.message||'invalid response').slice(0,240),502);
-    const attached=JSON.stringify([{media_fbid:data.id}]);
-    const post=await metaCall(encodeURIComponent(v.meta_page_id)+'/feed',
-      {message:v.body,published:'false',scheduled_publish_time:String(scheduled),attached_media:attached},token);
-    return {remoteId:String(post.id||post.post_id),state:'scheduled'};
-  }
-  const post=await metaCall(encodeURIComponent(v.meta_page_id)+'/feed',
-    {message:v.body,published:'false',scheduled_publish_time:String(scheduled)},token);
-  return {remoteId:String(post.id||post.post_id),state:'scheduled'};
-}
-function cryptoRandom(){return Math.random().toString(36).slice(2)+Date.now().toString(36);}

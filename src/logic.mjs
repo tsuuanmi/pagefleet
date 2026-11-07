@@ -33,13 +33,6 @@ export function verifyImage(bytes, mime) {
   if (!expected || expected !== mime) throw new Error('Only authentic JPEG, PNG or WebP files are allowed');
   return expected;
 }
-export function safeEnvKey(value) {
-  if (!value) return '';
-  if (typeof value !== 'string' || !/^META_PAGE_TOKEN_[A-Z0-9_]{1,50}$/.test(value)) {
-    throw new Error('Token environment name must be META_PAGE_TOKEN_<NAME>');
-  }
-  return value;
-}
 export function variantPrompt(idea, page) {
   return [
     'Write ONE original Facebook Page post in Vietnamese. Return only the ready-to-publish post text.',
